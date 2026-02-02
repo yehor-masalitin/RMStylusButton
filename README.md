@@ -8,27 +8,165 @@ It should work with any EMR (Wacom-compatible) stylus.  It has been tested with 
  * Wacom One Pen CP91300B2Z
  * iFlytec T1 4096
 
-## Installation
+## Fork
 
-Installation of RMStylusButton requires an SSH connection to your reMarkable device.   This [reMarkable guide page](https://remarkable.guide/guide/access/ssh.html) can get you started.
+This project is a fork of - [RMStylusButton](https://github.com/rschroll/RMStylusButton) which hasn't been updated in a while. 
+The two main changes are:
+- Use docker to build the binary on any machine (as I was building for mac and don't trust binaries created by others).
+- Add support for the latest reMarkable OS (with the help of antigravity https://antigravity.google/ as I am not a Linux expert)
 
-To download RMStylusButton, SSH into your device and run
-```
-wget https://github.com/rschroll/RMStylusButton/releases/download/v3.0/RMStylusButton.tar.gz -O- | tar xz
-```
-This will download and unpack several files to a newly-created `RMStylusButton` directory.
+Tested on the latest reMarkable OS (3.25.0.142)
 
-To test it out, run
-```
-./RMStylusButton/RMStylusButton
-```
-(See below for usage details.)  Use `Ctrl-C` to stop the program.
+## Build
 
-To install RMStylusButton and have it start automatically, run
+> [!WARNING]
+> It is not safe to just use binaries you found in the internet, so the guide was changed to allow anyone to build it by themselves, if any part is not clear, please raise an issue
+
+To build RMStylusButton, follow these steps:
+
+### 1. Download the source code
+### 2. Complete the pre-install steps
+- reMarkable 2
+- SSH access to your reMarkable device. 
+This [reMarkable guide page](https://remarkable.guide/guide/access/ssh.html) can get you started.
+- Docker installed https://www.docker.com
+- reMarkable toolchain downloaded (you should use the version that is compatible with your reMarkable device). However, if you are using the latest reMarkable OS, you can just use the latest. Just make sure to download the one with the `rm2` codename
+### 3. Place SDK in toolchains folder
+```bash
+# Create toolchains directory
+mkdir -p toolchains
+
+# Move downloaded SDK there
+mv ~/Downloads/remarkable-production-image-*.sh toolchains/
 ```
-./RMStylusButton/manage.sh install
+### 4. Build the docker image (this allows you to build the linux binary on any machine)
+```bash
+chmod +x docker-build.sh
+./docker-build.sh build-image
 ```
-Your stylus button should work immediately, as well as after restarts.
+
+The script will automatically detect the SDK in the `toolchains/` folder.
+
+<details>
+  <summary>Output example</summary>
+  
+  <img width="1440" height="832" alt="image" src="https://github.com/user-attachments/assets/17f2d460-5baf-4939-99db-b3e9ab1edf77" />
+  
+</details>
+
+### 5. Compile the project
+
+```bash
+./docker-build.sh compile
+```
+
+This creates:
+- `RMStylusButton/RMStylusButton` - The compiled binary
+- `RMStylusButton.tar.gz` - Tarball ready for deployment
+
+<details>
+  <summary>Output example</summary>
+  
+  <img width="1439" height="518" alt="image" src="https://github.com/user-attachments/assets/f316b743-3719-431e-bbff-a094e1299b85" />
+  
+</details>
+
+## Deployment to reMarkable
+
+### Manual deployment (recommended)
+
+```bash
+# Copy tarball to device
+scp RMStylusButton.tar.gz root@<your address>:~/
+
+# SSH into device
+ssh root@<your address>
+
+# Extract and install
+tar xzf RMStylusButton.tar.gz
+cd RMStylusButton
+
+# To test it out, run
+./RMStylusButton
+# Use `Ctrl-C` to stop the program.
+
+# Install with toggle mode (button toggles between pen/eraser)
+./manage.sh install --toggle
+
+# Or install with press mode (button acts as eraser while pressed)
+./manage.sh install
+```
+
+
+<details>
+  <summary>Output example</summary>
+  
+  <img width="787" height="125" alt="image" src="https://github.com/user-attachments/assets/7c9f8e90-8ec3-4ec1-8fc9-3741b5155913" />
+  
+</details>
+
+### Check installation
+
+```bash
+# On reMarkable device
+systemctl status RMStylusButton.service
+```
+
+## Available Commands
+
+```bash
+./docker-build.sh build-image  # Build Docker image with SDK
+./docker-build.sh compile      # Compile the project
+./docker-build.sh all          # Build image and compile in one step
+./docker-build.sh clean        # Clean build artifacts
+./docker-build.sh shell        # Open interactive shell in container
+```
+
+## Troubleshooting
+
+### Docker not running
+```bash
+# Make sure Docker Desktop is running
+docker info
+```
+
+### SDK not found
+```bash
+# Verify SDK is in toolchains folder
+ls -la toolchains/
+# Should show .sh file
+```
+
+### Binary architecture verification
+```bash
+# Verify the binary is ARM
+file RMStylusButton/RMStylusButton
+# Should show: ELF 64-bit LSB executable, ARM aarch64
+```
+
+### SSH connection to reMarkable
+```bash
+# Connect via USB
+ssh root@10.11.99.1
+
+# Password is in: Settings > Help > Copyrights and licenses
+```
+
+### Uninstall from reMarkable
+```bash
+ssh root@10.11.99.1
+cd RMStylusButton
+./manage.sh uninstall
+```
+
+## Notes
+
+- The SDK must be in the `toolchains/` folder before building the Docker image
+- The Docker image includes the full cross-compilation toolchain
+- The compiled binary is ARM architecture for reMarkable devices
+- You only need to rebuild the Docker image if you change SDK versions
+- Use `./docker-build.sh compile` for subsequent builds after image is created
+
 
 ### reMarkable upgrades
 
@@ -48,16 +186,6 @@ If you desire, you can also delete the downloaded files:
 rm -r RMStylusButton
 ```
 
-<details>
-<summary><b>A note about security</b></summary>
-
-Downloading and running binaries from random people on the internet is not a great idea, security-wise.  For openness, the binary is built on GitHub Actions.  You can checkout the [workflow](https://github.com/rschroll/RMStylusButton/blob/main/.github/workflows/build.yml) and examine the [build logs](https://github.com/rschroll/RMStylusButton/actions).  A `sha256sum` of the tarball is computed in the build process.  Use this to verify that the files you downloaded was the same as was built in the GitHub Action.  On either your reMarkable or your computer, run
-```
-sha256sum RMStylusButton.tar.gz
-```
-The output should be the same as in the GitHub Actions log for the version that you have downloaded.
-</details>
-
 ## Usage
 
 Press and hold the button on your stylus to erase.  Release the button to switch back to whatever pen you had selected.
@@ -72,16 +200,6 @@ RMStylusButton can be configured by options passed to the binary or to the `mana
 <td><code>--toggle</code></td>
 <td>Single presses of the button toggle between erase mode and pen mode.</td>
 </tr></table>
-
-## Development
-
-To build RMStylusButton for the reMarkable, you need the [reMarkable toolchain](https://remarkable.guide/devel/toolchains.html).  I've been using the [official 4.0.117 release for the reMarkable 2](https://storage.googleapis.com/remarkable-codex-toolchain/remarkable-platform-image-4.0.117-rm2-public-x86_64-toolchain.sh).  The toolchain is intended for Linux machines, but I know people have gotten it to run in Docker.
-
-This file is a self-extracting shell script, which unpacks, by default to `/opt/codex`.  You may need to run the script as root.
-
-You will need to `source` the environment-setup file that got installed with the toolchain to get everything set up for cross-compilation.  Then, simply running `make` should build the RMStylusButton binary.  `make RMStylusButton.tar.gz` will assemble a tarball with the binary and the `manage.sh` script.
-
-To help with development, the `make deploy` target attempts to copy the tarball over to the reMarkable device.  It assumes that it can be reached at `remarkable.local`.  If that's not the case, set the `rmdevice` environmental variable with the right host name or IP address.
 
 ### How it works
 
